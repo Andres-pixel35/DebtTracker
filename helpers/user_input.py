@@ -1,0 +1,168 @@
+from config import MAX_DEBTS, FIELDNAMES, DEFAULT_USER_NAME
+from datetime import datetime
+from dateutil.relativedelta import relativedelta
+from helpers.debts_functions import calculate_interest_rate, calculate_remaining_amount, check_debt 
+from helpers.generalities import create_list_dict, check_name_debt
+from helpers.files_helpers import write_history, update_records
+
+# to check out that when the user is asked to enter 'y/n', they actually do that
+def get_choice() -> str:
+    valid_options = ['y', 'n']
+    while True:
+        choice = input("(y/n): ").lower()
+        if choice not in valid_options:
+            continue
+        return choice
+
+# it allows the user to enter their debts and it creates a list of dictionaries, the user can enter up to MAX_DEBTS debts.
+# some information is automatically fill up since there is no need for the user to manually enter that kind of information.    
+def get_debts(user_name: str, debts: list, old_user: bool) -> list:
+    print(f"\nPlease enter the following information related to your debts.\nRemeber that you can only enter up to {MAX_DEBTS} different debts.\n")
+    new_debts = []
+
+    while True:
+        number_debts = len(debts)
+        if number_debts == MAX_DEBTS:
+            print("You have reached the maximum amount of debts you can record.\n\nClosing")
+            return debts
+
+        debt_name = input(f"Please enter the name of your debt number {number_debts + 1}: ").lower()
+
+        if debt_name.strip() == "":
+            print("You must enter a name for each one of your debts. Please try again.\n")
+            continue
+        elif not check_name_debt(debt_name, debts):
+            print(f"A debt called {debt_name.title()} already exists. Please try again.\n")
+            continue
+        
+        while True:
+            try:
+                start_date = datetime.strptime(input("Enter the start date (YYYY/MM/DD): "), "%Y/%m/%d").date()
+                instalments = int(input("Please enter the number of your instalments: "))
+                payment_monthly = float(input("Please enter the amount of money due monthly: "))
+                principal = float(input("Please enter the principal: "))
+
+                if payment_monthly < 1 or principal < 1 or instalments < 1:
+                    print("You must enter a positive number greater than 0. Please try again.\n")
+                    continue
+
+                if not check_debt(payment_monthly, principal, instalments, start_date):
+                    print("")
+                    continue
+
+                interest_rate = calculate_interest_rate(payment_monthly, principal, instalments)
+                if interest_rate < 0:
+                    print("The interest rate cannot be negative.")
+                    raise ValueError
+
+                deadline = start_date + relativedelta(months=instalments)
+
+                break
+            except ValueError:
+                print("An error occurred with the data you entered. Please check and try again.\n")
+
+        remaining_amount = calculate_remaining_amount(payment_monthly, instalments, start_date)
+
+        start_date = start_date.strftime("%Y/%m/%d")
+        deadline = deadline.strftime("%Y/%m/%d")
+
+        temp_list = [user_name, debt_name, start_date, deadline, payment_monthly, instalments, principal, remaining_amount, interest_rate]
+
+        new_debt = create_list_dict(FIELDNAMES, temp_list, debts)
+        new_debts.append(new_debt)
+
+        print(f"\nYour debt {debt_name.title()} has been added successfully.\nDo you want to add another debt? ", end="")
+        choice = get_choice()
+        if choice == 'y':
+            print("")
+            continue
+        
+        write_history(new_debts, old_user)
+        break
+    return debts
+
+def get_choice_2(options: list,) -> int:
+    length = len(options)
+    tmp_list = list(range(1, length + 1))
+
+    while True:
+        for i in range(length):
+            print(f"{i + 1}: {options[i]}")
+
+        try:
+            choice = int(input("Please enter the number of your choice: "))
+
+            if choice not in tmp_list:
+                raise ValueError
+
+            return choice
+        except ValueError:
+            print(f"You must choose a number betwen 1 and {length}. Please try again.\n")
+            continue
+
+def ask_debt_name(debts: list, param: str) -> dict:
+    tmp_dict = {}
+    debts_names = [debt["debt_name"].title() for debt in debts]
+
+    print(f"\nPlease choose the debt whose {param} you want to know ")
+
+    choice = get_choice_2(debts_names)
+
+    for debt in debts:
+        if debt["debt_name"] == debts_names[choice - 1].lower():
+            tmp_dict = debt.copy()
+
+    return tmp_dict
+
+def ask_users_name() -> str:
+    user_name = input(f"Please enter your name (default '{DEFAULT_USER_NAME}'): ").lower()
+
+    if user_name.strip() == "":
+        user_name = DEFAULT_USER_NAME
+
+    return user_name
+
+def ask_continue(debts):
+    print("\nDo you want to do something else? ", end="")
+    choice = get_choice()
+    if choice == 'n':
+        update_records(debts)
+        print("Thank you for using my program.\nClosing.")
+        return False
+    return True
+
+def get_days_fine(remaining_principal: float) -> tuple:
+    days = 0
+    fine_percent = 0
+    fine_amount = 0
+
+    while True:
+        try:
+            days = int(input("\nPlease enter the amount of days that have passed since your last installment: "))
+            if days < 0 or days > 29:
+                raise ValueError
+            break
+        except ValueError:
+            print("You must enter an integer greater than 0 and smaller than 30. Please try again.")
+
+    while True:
+        print("Is there a prepayment penalty on this loan? ", end="")
+        choice = get_choice()
+        if choice == 'n':
+            break
+
+        try:
+            fine_percent = float(input("Please enter the percentage of that penalty (e.g: 5% = 5.0): "))
+            if fine_percent < 0:
+                raise ValueError
+            break
+        except ValueError:
+            print("You must enter a positive floating point. Plese try again.")
+
+    fine_percent = fine_percent / 100
+    fine_amount = remaining_principal * fine_percent
+
+    return days, fine_amount
+
+
+
