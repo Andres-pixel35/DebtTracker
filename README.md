@@ -13,6 +13,9 @@
 
 **Installation**
 1. Clone or copy the project to your local machine.
+```bash
+git clone https://github.com/Andres-pixel35/DebtTracker.git
+```
 2. (Optional but recommended) Create and activate a virtual environment:
 
 ```bash
